@@ -1,0 +1,5 @@
+This project contains code from various open source projects.
+
+diffmatchpatch (http://code.google.com/p/google-diff-match-patch/) under Apache License, 2.0
+
+sockjs (https://github.com/sockjs/sockjs-client/) under MIT License

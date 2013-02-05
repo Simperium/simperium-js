@@ -1,3 +1,4 @@
+# A namespace for sync objects.  Same object abstraction level as DB table: posts, notes, ...
 class bucket
     constructor: (@s, @name, b_opts) ->
         @jd = @s.jd

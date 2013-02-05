@@ -17,7 +17,7 @@ class bucket
         if not @clientid? or @clientid.indexOf("sjs") != 0
             @clientid = "sjs-#{@s.bversion}-#{@uuid(5)}"
             try
-                localStorage.setItem "#{@namespace}/clientid"
+                localStorage.setItem "#{@namespace}/clientid", @clientid
             catch error
                 console.log "#{@name}: couldnt set clientid"
 
@@ -90,7 +90,9 @@ class bucket
         if not @s.supports_html5_storage()
             return
         total = 0
-        for own key, datastr of localStorage
+        for i in [0..localStorage.length-1]        
+            key = localStorage.key(i)
+            datastr = localStorage.getItem( key )
             console.log "[#{key}]: #{datastr}"
             total = total + 1
         console.log "#{total} total"
@@ -162,16 +164,17 @@ class bucket
         key = "#{@namespace}/e/#{id}"
         store_data = @data.store[id]
         datastr = JSON.stringify(store_data)
+        console.log "LSTORE:", key, datastr
         try
             localStorage.setItem key, datastr
         catch error
             return false
         ret_data = JSON.parse localStorage.getItem key
         if @jd.equals store_data, ret_data
-#            console.log "saved #{key} len: #{datastr.length}"
+            console.log "saved #{key} len: #{datastr.length}"
             return true
         else
-#            console.log "ERROR STORING ENTITY: store: #{JSON.stringify(store_data)}, retrieve: #{JSON.stringify(ret_data)}"
+            console.log "ERROR STORING ENTITY: store: #{JSON.stringify(store_data)}, retrieve: #{JSON.stringify(ret_data)}"
             return false
 
     _remove_entity: (id) =>

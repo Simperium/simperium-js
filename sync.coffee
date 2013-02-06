@@ -566,7 +566,7 @@ class bucket
 				if offsets.length > 1
 					cursor['endOffset'] = offsets[1]
 					if cursor['startOffset'] >= cursor['endOffset']
-    					cursor['collapsed'] = true
+						cursor['collapsed'] = true
 				@s._restoreCursor element, cursor
 			else
 				console.log "in regular apply_object_diff"
@@ -814,7 +814,7 @@ class bucket
 					if not ('local' of change)
 #                        setTimeout do(change) =>
 #                            => @_notify_client change['id'], null, null, null
-    					@_notify_client change['id'], null, null, null, null
+						@_notify_client change['id'], null, null, null, null
 
 				else if op is 'M'
 					s_data = @data.store[id]
@@ -878,8 +878,8 @@ class bucket
 				diff = false
 				if @_last_pending.length is curr_pending.length
 					for x in @_last_pending
-    					if curr_pending.indexOf(x) is -1
-        					diff = true
+						if curr_pending.indexOf(x) is -1
+							diff = true
 				else
 					diff = true
 			if diff
@@ -1137,7 +1137,7 @@ class simperium
 				cursor.startOffset - padLength);
 		if (cursorStartPoint !== null) {
 			pattern2 = newText.substring(cursorStartPoint,
-                                                 					cursorStartPoint + pattern1.length);
+ 																	cursorStartPoint + pattern1.length);
 			//alert(pattern1 + '\nvs\n' + pattern2);
 			// Run a diff to get a framework of equivalent indicies.
 			diff = this.dmp.diff_main(pattern1, pattern2, false);
@@ -1152,7 +1152,7 @@ class simperium
 					cursor.endOffset - padLength);
 			if (cursorEndPoint !== null) {
 				pattern2 = newText.substring(cursorEndPoint,
-                                                     					cursorEndPoint + pattern1.length);
+ 																		cursorEndPoint + pattern1.length);
 				//alert(pattern1 + '\nvs\n' + pattern2);
 				// Run a diff to get a framework of equivalent indicies.
 				diff = this.dmp.diff_main(pattern1, pattern2, false);

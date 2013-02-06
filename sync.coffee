@@ -121,14 +121,19 @@ class bucket
 		
 		# Tracks changes to the pending items in the send_queue.  Used by the `notify_pending` callback.
 		@_last_pending = null
+
+		# Timout delay for resending failed change events.
+		# The backoff increases with each failure, bounded by min and max.
 		@_send_backoff = 15000
 		@_backoff_max = 120000
 		@_backoff_min = 15000
 
+		@initFromLocalStorage = 0
+
 		console.log "#{@namespace}: bucket created: opts: #{JSON.stringify(@options)}"
 
 	# ### `uuid()`
-	# Generate a UUID (not RFC 4122 4.4)
+	# Generate a UUID (not RFC 4122 4.4) using a...
 	uuid: (n) ->
 		n = n || 8
 		s = @S4()
@@ -136,13 +141,17 @@ class bucket
 			s += @S4()
 		return s
 
-	# using a random 4-hexit generator.
+	# Random 4-hexit generator.
 	S4: ->
 		(((1+Math.random())*0x10000)|0).toString(16).substring(1)
 
+	# ### `now()`
+	# Timestamp in milliseconds.
 	now: ->
 		new Date().getTime()
 
+	# ### `on()`
+	# Registers event handlers.  Only one callback per event type is allowed.
 	on: (event, callback) =>
 		if event in @cb_events
 			@cbs[event] = callback
@@ -268,6 +277,19 @@ class bucket
 	start: =>
 		console.log "#{@space}: started initialized: #{@initialized} authorized: #{@authorized}"
 		@namespace = "#{@username}:#{@space}"
+
+		if @loaded
+			@initFromLocalStorage = @loaded
+
+		console.error @initFromLocalStorage
+
+		if @loaded
+			console.error "LOADED", @loaded
+			for own id, entity of @data.store
+				@_notify_client id, entity.object, entity.version
+			@loaded = 0
+
+		console.error @initFromLocalStorage
 		@started = true
 		@first = false
 		if not @authorized
@@ -288,8 +310,12 @@ class bucket
 					name:   @name
 					clientid: @clientid
 					build: @s.bversion
-				if not @initialized
+				if @initFromLocalStorage
+					opts.cmd = "cv:#{@data.last_cv}"
+				else if not @initialized
 					opts.cmd = index_query
+				console.error opts,  @initFromLocalStorage
+				@initFromLocalStorage = 0
 				@send("init:#{JSON.stringify(opts)}")
 				console.log "#{@name}: sent init #{JSON.stringify(opts)} waiting for auth"
 			else
@@ -449,6 +475,7 @@ class bucket
 			@data.store[id]['id'] = id
 			@data.store[id]['object'] = data
 			@data.store[id]['version'] = parseInt(version)
+			@_save_entity id
 
 			notify_cb id, data_copy, version
 			@notify_index[id] = true
@@ -477,7 +504,7 @@ class bucket
 	# diff: the newly received incoming diff (orig_object + diff = new_object)
 	_notify_client: (key, new_object, orig_object, diff, version) =>
 		console.log "#{@name}: _notify_client(#{key}, #{new_object}, #{orig_object}, #{JSON.stringify(diff)})"
-		if not @cb_l?
+		if not @cb_l? or not @started
 			console.log "#{@name}: no get callback, notifying without transform"
 			@cb_n key, new_object, version
 			return
@@ -578,15 +605,15 @@ class bucket
 		if s_data['last']? and @jd.entries(s_data['last']) > 0
 			if @jd.equals s_data['object'], s_data['last']
 				s_data['last'] = null
-				@_remove_entity id
+#				@_remove_entity id
 				return false
 
 		change = @_make_change id
 		if change?
 			s_data['change'] = change
 			@_queue_change change
-		else
-			@_remove_entity id
+#		else
+#			@_remove_entity id
 		return true
 
 	update: (id, object) =>
@@ -681,20 +708,31 @@ class bucket
 #        console.log "_make_change(#{id}) returning: #{JSON.stringify(change)}"
 		return change
 
+	# ### `_queue_change()`
+	# Send a change to the server, and queue it to resend on failure.
 	_queue_change: (change) =>
 		if not change?
 			return
 
 		console.log "_queue_change(#{change['id']}:#{change['ccid']}): sending"
+		# Add to the pending queue.  It will be removed from the queue when the
+		# change is successfully processed by the server
 		@data.send_queue.push change
+		# Request: Change, change data
 		@send("c:#{JSON.stringify(change)}")
 		@_check_pending()
 
+		# Set a new timeout to resend the queue using...
 		if @data.send_queue_timer?
 			clearTimeout(@data.send_queue_timer)
 
+		
 		@data.send_queue_timer = setTimeout @_send_changes, @_send_backoff
 
+	# ### `_send_changes()`
+	# Runs on a timeout to send any pending changes.
+	# Queues each change to rerun in case of failure.
+	# For each failure, the timeout delay increases.
 	_send_changes: =>
 		if @data.send_queue.length is 0
 			console.log "#{@name}: send_queue empty, done"
@@ -746,25 +784,28 @@ class bucket
 			if 'error' of change
 				switch change['error']
 					when 412
-    					console.log "#{@name}: on_changes(): empty change, dont check"
-    					idx = check_updates.indexOf(change['id'])
-    					if idx > -1
-        					check_updates.splice(idx, 1)
+						console.log "#{@name}: on_changes(): empty change, dont check"
+						idx = check_updates.indexOf(change['id'])
+						if idx > -1
+							check_updates.splice(idx, 1)
 					when 409
-    					console.log "#{@name}: on_changes(): duplicate change, ignoring"
+						console.log "#{@name}: on_changes(): duplicate change, ignoring"
 					when 405
-    					console.log "#{@name}: on_changes(): bad version"
-    					if change['id'] of @data.store
-        					@data.store[change['id']]['version'] = null
-    					reload_needed = true
+						console.log "#{@name}: on_changes(): bad version"
+						if change['id'] of @data.store
+							@data.store[change['id']]['version'] = null
+							@_save_entity change['id']
+						reload_needed = true
 					when 440
-    					console.log "#{@name}: on_change(): bad diff, sending full object"
-    					@data.store[id]['sendfull'] = true
+						console.log "#{@name}: on_change(): bad diff, sending full object"
+						@data.store[id]['sendfull'] = true
+						@_save_entity id
 					else
-    					console.log "#{@name}: error for last change, reloading"
-    					if change['id'] of @data.store
-        					@data.store[change['id']]['version'] = null
-    					reload_needed = true
+						console.log "#{@name}: error for last change, reloading"
+						if change['id'] of @data.store
+							@data.store[change['id']]['version'] = null
+							@_save_entity change['id']
+						reload_needed = true
 			else
 				op = change['o']
 				if op is '-'
@@ -778,36 +819,38 @@ class bucket
 				else if op is 'M'
 					s_data = @data.store[id]
 					if ('sv' of change and s_data? and s_data['version']? and s_data['version'] == change['sv']) or !('sv' of change) or (change['ev'] == 1)
-    					if not s_data?
-        					@data.store[id] =
-            					'id'        :   id
-            					'object'    :   {}
-            					'version'   :   null
-            					'last'      :   null
-            					'change'    :   null
-            					'check'     :   null
-        					s_data = @data.store[id]
+						if not s_data?
+							@data.store[id] =
+								'id'        :   id
+								'object'    :   {}
+								'version'   :   null
+								'last'      :   null
+								'change'    :   null
+								'check'     :   null
+							@_save_entity id
+							s_data = @data.store[id]
 #                        console.log "#{@name}: processing modify for #{JSON.stringify(s_data)}"
-    					orig_object = @jd.deepCopy s_data['object']
-    					s_data['object'] = @jd.apply_object_diff s_data['object'], change['v']
-    					s_data['version'] = change['ev']
-
-    					new_object = @jd.deepCopy s_data['object']
-
-    					if not ('local' of change)
+						orig_object = @jd.deepCopy s_data['object']
+						s_data['object'] = @jd.apply_object_diff s_data['object'], change['v']
+						s_data['version'] = change['ev']
+						
+						new_object = @jd.deepCopy s_data['object']
+						
+						if not ('local' of change)
 #                            setTimeout do(change, new_object, orig_object) =>
 #                                => @_notify_client change['id'], new_object, orig_object, change['v']
-        					@_notify_client change['id'], new_object, orig_object, change['v'], change['ev']
+							@_notify_client change['id'], new_object, orig_object, change['v'], change['ev']
 					else if s_data? and s_data['version']? and change['ev'] <= s_data['version']
-    					console.log "#{@name}: old or duplicate change received, ignoring, change.ev=#{change['ev']}, s_data.version:#{s_data['version']}"
+						console.log "#{@name}: old or duplicate change received, ignoring, change.ev=#{change['ev']}, s_data.version:#{s_data['version']}"
 					else
-    					if s_data?
-        					console.log "#{@name}: version mismatch couldnt apply change, change.ev:#{change['ev']}, s_data.version:#{s_data['version']}"
-    					else
-        					console.log "#{@name}: version mismatch couldnt apply change, change.ev:#{change['ev']}, s_data null"
-    					if s_data?
-        					@data.store[id]['version'] = null
-    					reload_needed = true
+						if s_data?
+							console.log "#{@name}: version mismatch couldnt apply change, change.ev:#{change['ev']}, s_data.version:#{s_data['version']}"
+						else
+							console.log "#{@name}: version mismatch couldnt apply change, change.ev:#{change['ev']}, s_data null"
+						if s_data?
+							@data.store[id]['version'] = null
+							@_save_entity id
+						reload_needed = true
 				else
 					console.log "#{@name}: no operation found for change"
 				if not reload_needed

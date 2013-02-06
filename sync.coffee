@@ -113,6 +113,7 @@ class bucket
 			@_load_meta()
 			@loaded = @_load_data()
 			console.log "#{@name}: localstorage loaded #{@loaded} entities"
+			@_load_queue()
 		else
 			# but can be turned off with the `'nostore'` option.
 			console.log "#{@name}: not loading from localstorage"
@@ -245,6 +246,24 @@ class bucket
 					@_remove_entity id
 		return loaded
 
+	_save_queue: =>
+		if not @s.supports_html5_storage()
+			return
+		localStorage.setItem "#{@namespace}/q/", JSON.stringify @data.send_queue
+
+	_load_queue: =>
+		if not @s.supports_html5_storage()
+			return
+		key = "#{@namespace}/q/"
+		queue = JSON.parse localStorage.getItem key
+		if not queue
+			localStorage.removeItem key
+			return
+		for item in queue
+			@data.send_queue.push item
+		@_save_queue()
+		@_send_changes false
+
 	_save_entity: (id) =>
 		if not @s.supports_html5_storage()
 			return false
@@ -281,15 +300,18 @@ class bucket
 		if @loaded
 			@initFromLocalStorage = @loaded
 
-		console.error @initFromLocalStorage
-
 		if @loaded
-			console.error "LOADED", @loaded
 			for own id, entity of @data.store
+				for change in @data.send_queue
+					if String(id) is String(change.id)
+						try
+							entity.object = @jd.apply_object_diff entity.object, change.v
+						catch error
+							console.error error
+							console.log id, entity, change
 				@_notify_client id, entity.object, entity.version
 			@loaded = 0
 
-		console.error @initFromLocalStorage
 		@started = true
 		@first = false
 		if not @authorized
@@ -314,7 +336,6 @@ class bucket
 					opts.cmd = "cv:#{@data.last_cv}"
 				else if not @initialized
 					opts.cmd = index_query
-				console.error opts,  @initFromLocalStorage
 				@initFromLocalStorage = 0
 				@send("init:#{JSON.stringify(opts)}")
 				console.log "#{@name}: sent init #{JSON.stringify(opts)} waiting for auth"
@@ -720,6 +741,8 @@ class bucket
 		# Add to the pending queue.  It will be removed from the queue when the
 		# change is successfully processed by the server
 		@data.send_queue.push change
+		console.log "ABOUT TO SAVE"
+		@_save_queue()
 		# Request: Change, change data
 		@send("c:#{JSON.stringify(change)}")
 		@_check_pending()
@@ -735,7 +758,7 @@ class bucket
 	# Runs on a timeout to send any pending changes.
 	# Queues each change to rerun in case of failure.
 	# For each failure, the timeout delay increases.
-	_send_changes: =>
+	_send_changes: ( increase_backoff = true ) =>
 		if @data.send_queue.length is 0
 			console.log "#{@name}: send_queue empty, done"
 			@data.send_queue_timer = null
@@ -747,9 +770,10 @@ class bucket
 				console.log "#{@name}: sending change: #{JSON.stringify(change)}"
 				@send("c:#{JSON.stringify(change)}")
 
-		@_send_backoff = @_send_backoff * 2
-		if @_send_backoff > @_backoff_max
-			@_send_backoff = @_backoff_max
+		if increase_backoff
+			@_send_backoff = @_send_backoff * 2
+			if @_send_backoff > @_backoff_max
+				@_send_backoff = @_backoff_max
 
 		@data.send_queue_timer = setTimeout @_send_changes, @_send_backoff
 
@@ -779,6 +803,7 @@ class bucket
 				@data.store[pd['id']]['change'] = null
 				@_save_entity pd['id']
 				@data.send_queue = (p for p in @data.send_queue when p isnt pd)
+				@_save_queue()
 			if pending_to_delete.length > 0
 				@_check_pending()
 #            console.log "#{@name}: send queue: #{JSON.stringify(@data.send_queue)}"

@@ -262,7 +262,7 @@ class bucket
 		for item in queue
 			@data.send_queue.push item
 		@_save_queue()
-		@_send_changes false
+		@data.send_queue_timer = setTimeout @_send_changes, 100
 
 	_save_entity: (id) =>
 		if not @s.supports_html5_storage()
@@ -302,14 +302,14 @@ class bucket
 
 		if @loaded
 			for own id, entity of @data.store
+				entity_copy = @jd.deepCopy(entity)
 				for change in @data.send_queue
 					if String(id) is String(change.id)
 						try
-							entity.object = @jd.apply_object_diff entity.object, change.v
+							entity_copy.object = @jd.apply_object_diff entity_copy.object, change.v
 						catch error
-							console.error error
-							console.log id, entity, change
-				@_notify_client id, entity.object, entity.version
+							console.log id, entity_copy, change
+				@_notify_client id, entity_copy.object, entity_copy.version
 			@loaded = 0
 
 		@started = true
@@ -741,7 +741,6 @@ class bucket
 		# Add to the pending queue.  It will be removed from the queue when the
 		# change is successfully processed by the server
 		@data.send_queue.push change
-		console.log "ABOUT TO SAVE"
 		@_save_queue()
 		# Request: Change, change data
 		@send("c:#{JSON.stringify(change)}")
@@ -758,22 +757,21 @@ class bucket
 	# Runs on a timeout to send any pending changes.
 	# Queues each change to rerun in case of failure.
 	# For each failure, the timeout delay increases.
-	_send_changes: ( increase_backoff = true ) =>
+	_send_changes: =>
 		if @data.send_queue.length is 0
 			console.log "#{@name}: send_queue empty, done"
 			@data.send_queue_timer = null
 			return
 		if not @s.connected
-			console.log "#{@name}: _send_changes: not connected"
+			console.log "#{@name}: _send_changes: not connected", @_send_backoff
 		else
 			for change in @data.send_queue
 				console.log "#{@name}: sending change: #{JSON.stringify(change)}"
 				@send("c:#{JSON.stringify(change)}")
 
-		if increase_backoff
-			@_send_backoff = @_send_backoff * 2
-			if @_send_backoff > @_backoff_max
-				@_send_backoff = @_backoff_max
+		@_send_backoff = @_send_backoff * 2
+		if @_send_backoff > @_backoff_max
+			@_send_backoff = @_backoff_max
 
 		@data.send_queue_timer = setTimeout @_send_changes, @_send_backoff
 
@@ -786,6 +784,7 @@ class bucket
 	on_changes: (response) =>
 		check_updates = []
 		reload_needed = false
+		# @todo reset @_send_backoff to @_backoff_min when we receive any data, not just changes
 		@_send_backoff = @_backoff_min
 		console.log "#{@name}: on_changes(): response="
 		console.log response
@@ -793,12 +792,14 @@ class bucket
 			id = change['id']
 			console.log "#{@name}: processing id=#{id}"
 			pending_to_delete = []
+			console.log change, @data.send_queue
 			for pending in @data.send_queue
-				if change['clientid'] is @clientid and id is pending['id']
-#                    console.log "#{@name}: deleting change for id #{id}"
+				if change['clientid'] is @clientid
 					change['local'] = true
-					pending_to_delete.push pending
 					check_updates.push id
+					if id is pending['id']
+#						console.log "#{@name}: deleting change for id #{id}"
+						pending_to_delete.push pending
 			for pd in pending_to_delete
 				@data.store[pd['id']]['change'] = null
 				@_save_entity pd['id']

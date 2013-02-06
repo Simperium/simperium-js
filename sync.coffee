@@ -611,6 +611,7 @@ class bucket
 		change = @_make_change id
 		if change?
 			s_data['change'] = change
+			@_save_entity id
 			@_queue_change change
 #		else
 #			@_remove_entity id
@@ -699,6 +700,7 @@ class bucket
 			if 'sendfull' of s_data
 				change['d'] = @jd.deepCopy c_object
 				delete s_data['sendfull']
+				@_save_entity id
 			else
 				change['v'] = @jd.object_diff s_data['object'], c_object
 				if @jd.entries(change['v']) is 0
@@ -833,6 +835,7 @@ class bucket
 						orig_object = @jd.deepCopy s_data['object']
 						s_data['object'] = @jd.apply_object_diff s_data['object'], change['v']
 						s_data['version'] = change['ev']
+						@_save_entity id
 						
 						new_object = @jd.deepCopy s_data['object']
 						

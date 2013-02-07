@@ -262,7 +262,6 @@ class bucket
 		for item in queue
 			@data.send_queue.push item
 		@_save_queue()
-		@data.send_queue_timer = setTimeout @_send_changes, 100
 
 	_save_entity: (id) =>
 		if not @s.supports_html5_storage()
@@ -338,6 +337,7 @@ class bucket
 					opts.cmd = index_query
 				@initFromLocalStorage = 0
 				@send("init:#{JSON.stringify(opts)}")
+				@data.send_queue_timer = setTimeout @_send_changes, 500
 				console.log "#{@name}: sent init #{JSON.stringify(opts)} waiting for auth"
 			else
 				console.log "#{@name}: waiting for connect"

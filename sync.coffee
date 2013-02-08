@@ -300,6 +300,7 @@ class bucket
 			@initFromLocalStorage = @loaded
 
 		if @loaded
+			notify_client_from_localStorage = [];
 			for own id, entity of @data.store
 				entity_copy = @jd.deepCopy(entity)
 				for change in @data.send_queue
@@ -308,7 +309,12 @@ class bucket
 							entity_copy.object = @jd.apply_object_diff entity_copy.object, change.v
 						catch error
 							console.log id, entity_copy, change
-				@_notify_client id, entity_copy.object, entity_copy.version
+				notify_client_from_localStorage.push [ id, entity_copy.object, null, null, entity_copy.version ]
+			setTimeout( () =>
+				for notify in notify_client_from_localStorage
+					@_notify_client.apply @, notify
+
+			, 100 )
 			@loaded = 0
 
 		@started = true

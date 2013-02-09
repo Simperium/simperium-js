@@ -1,64 +1,6 @@
-# Simperium provides a data-level abstraction layer for keeping content in sync between
-# users, devices, etc. Appropriate for mobile, web, desktop, backend, etc.
-
-# You start by initializing Simperium and registering callbacks on a "bucket".
-
-# Thereafter, Simperium keeps the bucket's data persisted and in sync. You can react to
-# incoming changes by registering callbacks. You can save local changes at any time,
-# and Simperium does the work to sync those changes efficiently.
-
-# On startup you'll get notifications for any existing objects in the bucket.  Keeping
-# track of these objects is the app's responsibility (in a dictionary, an array, a
-# `Backbone.Collection`, ...).
-# Whenever an object is changed locally you call it's bucket's `update` method to save
-# it. Register a `notify` callback to listen for changes from the server and update
-# your local store and UI accordingly.
-# Your app also needs to implement a `local' callback, which provides Simperiem with
-# a means of looking up the current state of a locally stored object.
-
-# Bucket
-# ------
-
-# Buckets are namespaces for sync objects. They are of the same object abstraction level
-# as DB tables: posts, notes, ...
-#
-# Don't create a new bucket manually  Use `simperium.bucket()` instead.
-#
-# @options:
-#	* page_delay: Delay for paged index retreival loop. Milliseconds.  Default 0.
-#	* update_delay: When changes are made locally, delay before sending the update to the server.  Throttles and aggragates changes.  Milliseconds Default 0.
-#	* nostore: Turn off `localStorage`.
-#	* limit: Retrieve only this many objects.  Default behavior is to retrieve all objects.
-#
-#	* n (private): Channel number for internal book keeping.
-#
-#	* app_id: See simperium.
-#	* host: See simperium.
-#	* port: See simperium.
-#	* sockjs: See simperium.
-#	* username: See simperium.
-#	* token: See simperium.
-#	* prefix: See simperium.
-# @name (string): Bucket Name
-# @chan (int): Channel number for internal book keeping
-# @username (string):
-# @namespace (string): The `localStorage` namespace for the bucket.  username, app ID, bucket name
-# @space (string): Useless :)
-# @clientid (string): Identifier for this client. Generated automatically.  Persists across page loads.
-# @cbevents (array>string): List of bucket event names.
-# @cbs (hash>callback): event callbacks.  Only one callback may be registered per event name.
-# @cb_e, @cb_l, @cb_ni, @cb_np, @cb_n, @cb_nv, @cb_r (callback): Copy of each event callback.  Useless?
-#
-# @initialized (bool): Has the initial index generation finished?
-# @authorized (bool): Does the provided token correspond to an authorized user?
-#
-# @s: Simperium
-# @js: JSONDiff
 class bucket
     constructor: (@s, @name, b_opts) ->
         @jd = @s.jd
-
-        # Parse options.
         @options = @jd.deepCopy @s.options
         for own name, val of b_opts
             @options[name] = val
@@ -67,7 +9,6 @@ class bucket
         @username = @options['username']
         @namespace = "#{@username}:#{@space}"
 
-        # Determine or generate the client ID.
         @clientid = null
         try
             @clientid = localStorage.getItem "#{@namespace}/clientid"
@@ -76,65 +17,44 @@ class bucket
         if not @clientid? or @clientid.indexOf("sjs") != 0
             @clientid = "sjs-#{@s.bversion}-#{@uuid(5)}"
             try
-                localStorage.setItem "#{@namespace}/clientid", @clientid
+                localStorage.setItem "#{@namespace}/clientid"
             catch error
                 console.log "#{@name}: couldnt set clientid"
 
-        # Initialize callbacks,
         @cb_events = ['notify', 'notify_init', 'notify_version', 'local', 'get', 'ready', 'notify_pending', 'error']
         @cbs = {}
         @cb_e = @cb_l = @cb_ni = @cb_np = null
         @cb_n = @cb_nv = @cb_r = ->
 
-        # state flags,
         @initialized = false
         @authorized = false
-        @started = false
-
-        # and client-side copy of data.
-        # The client-side copy contains
         @data =
-            # the CV,
             last_cv: 0
-            # a duplicate previntion ID,
             ccid: @uuid()
-            # a copy of each bucket item,
             store: {}
-            # a queue of changes to send to the server,
             send_queue: []
-            # and a timeout for sending the queue
             send_queue_timer: null
 
+        @started = false
 
-        # Each bucket can keep a copy of its data in `localStorage` to persist state across
-        # pageloads when the network is down.
         if not ('nostore' of @options)
-            # The `localStorage` mechanism is on by default
             @_load_meta()
             @loaded = @_load_data()
             console.log "#{@name}: localstorage loaded #{@loaded} entities"
-            @_load_queue()
         else
-            # but can be turned off with the `'nostore'` option.
             console.log "#{@name}: not loading from localstorage"
             @loaded = 0
 
-        
-        # Tracks changes to the pending items in the send_queue.  Used by the `notify_pending` callback.
         @_last_pending = null
-
-        # Timout delay for resending failed change events.
-        # The backoff increases with each failure, bounded by min and max.
         @_send_backoff = 15000
         @_backoff_max = 120000
         @_backoff_min = 15000
 
-        @initFromLocalStorage = 0
-
         console.log "#{@namespace}: bucket created: opts: #{JSON.stringify(@options)}"
 
-    # ### `uuid()`
-    # Generate a UUID (not RFC 4122 4.4) using a...
+    S4: ->
+        (((1+Math.random())*0x10000)|0).toString(16).substring(1)
+
     uuid: (n) ->
         n = n || 8
         s = @S4()
@@ -142,17 +62,9 @@ class bucket
             s += @S4()
         return s
 
-    # Random 4-hexit generator.
-    S4: ->
-        (((1+Math.random())*0x10000)|0).toString(16).substring(1)
-
-    # ### `now()`
-    # Timestamp in milliseconds.
     now: ->
         new Date().getTime()
 
-    # ### `on()`
-    # Registers event handlers.  Only one callback per event type is allowed.
     on: (event, callback) =>
         if event in @cb_events
             @cbs[event] = callback
@@ -178,9 +90,7 @@ class bucket
         if not @s.supports_html5_storage()
             return
         total = 0
-        for i in [0..localStorage.length-1]        
-            key = localStorage.key(i)
-            datastr = localStorage.getItem( key )
+        for own key, datastr of localStorage
             console.log "[#{key}]: #{datastr}"
             total = total + 1
         console.log "#{total} total"
@@ -246,40 +156,22 @@ class bucket
                     @_remove_entity id
         return loaded
 
-    _save_queue: =>
-        if not @s.supports_html5_storage()
-            return
-        localStorage.setItem "#{@namespace}/q/", JSON.stringify @data.send_queue
-
-    _load_queue: =>
-        if not @s.supports_html5_storage()
-            return
-        key = "#{@namespace}/q/"
-        queue = JSON.parse localStorage.getItem key
-        if not queue
-            localStorage.removeItem key
-            return
-        for item in queue
-            @data.send_queue.push item
-        @_save_queue()
-
     _save_entity: (id) =>
         if not @s.supports_html5_storage()
             return false
         key = "#{@namespace}/e/#{id}"
         store_data = @data.store[id]
         datastr = JSON.stringify(store_data)
-        console.log "LSTORE:", key, datastr
         try
             localStorage.setItem key, datastr
         catch error
             return false
         ret_data = JSON.parse localStorage.getItem key
         if @jd.equals store_data, ret_data
-            console.log "saved #{key} len: #{datastr.length}"
+#            console.log "saved #{key} len: #{datastr.length}"
             return true
         else
-            console.log "ERROR STORING ENTITY: store: #{JSON.stringify(store_data)}, retrieve: #{JSON.stringify(ret_data)}"
+#            console.log "ERROR STORING ENTITY: store: #{JSON.stringify(store_data)}, retrieve: #{JSON.stringify(ret_data)}"
             return false
 
     _remove_entity: (id) =>
@@ -295,38 +187,14 @@ class bucket
     start: =>
         console.log "#{@space}: started initialized: #{@initialized} authorized: #{@authorized}"
         @namespace = "#{@username}:#{@space}"
-
-        if @loaded
-            @initFromLocalStorage = @loaded
-
-        if @loaded
-            notify_client_from_localStorage = [];
-            for own id, entity of @data.store
-                entity_copy = @jd.deepCopy(entity)
-                for change in @data.send_queue
-                    if String(id) is String(change.id)
-                        try
-                            entity_copy.object = @jd.apply_object_diff entity_copy.object, change.v
-                        catch error
-                            console.log id, entity_copy, change
-                notify_client_from_localStorage.push [ id, entity_copy.object, null, null, entity_copy.version ]
-            setTimeout( () =>
-                for notify in notify_client_from_localStorage
-                    @_notify_client.apply @, notify
-
-            , 100 )
-            @loaded = 0
-
         @started = true
         @first = false
         if not @authorized
             if @s.connected
                 @first = true
                 if 'limit' of @options
-                    # Request: Index, with data, from item 0, since the beginning of time, return {limit} items
                     index_query = "i:1:::#{@options['limit']}"
                 else
-                    # Request: Index, with data, from item 0, since the beginning of time, return 40 items
                     index_query = "i:1:::40"
                 @irequest_time = @now()
                 @index_request = true
@@ -337,13 +205,9 @@ class bucket
                     name:   @name
                     clientid: @clientid
                     build: @s.bversion
-                if @initFromLocalStorage
-                    opts.cmd = "cv:#{@data.last_cv}"
-                else if not @initialized
+                if not @initialized
                     opts.cmd = index_query
-                @initFromLocalStorage = 0
                 @send("init:#{JSON.stringify(opts)}")
-                @data.send_queue_timer = setTimeout @_send_changes, 500
                 console.log "#{@name}: sent init #{JSON.stringify(opts)} waiting for auth"
             else
                 console.log "#{@name}: waiting for connect"
@@ -404,28 +268,21 @@ class bucket
         # load the index
         console.log "#{@name}: _refresh_store(): loading index"
         if 'limit' of @options
-            # Request: Index, with data, from item 0, since the beginning of time, return {limit} items
             index_query = "i:1:::#{@options['limit']}"
         else
-            # Request: Index, with data, from item 0, since the beginning of time, return 40 items
             index_query = "i:1:::40"
         @send(index_query)
         @irequest_time = @now()
         @index_request = true
         return
 
-    # ### `on_index_page()`
     on_index_page: (response) =>
-        # `now` and `elapsed` track how long it's been since we requested and index page and are used for debugging only.
         now = @now()
         elapsed = now - @irequest_time
         console.log "#{@name}: index response time: #{elapsed}"
         console.log "#{@name}: on_index_page(): index page received, current= #{response['current']}"
         console.log response
 
-        # Process each item in the response with `@on_entity_version()`.
-        # When the last item of all pages have been processed, `@on_entity_version()` will
-        # call `@_index_loaded()`, which sets `@initialized`.
         loaded = 0
         for item in response['index']
             @notify_index[item['id']] = false
@@ -433,35 +290,26 @@ class bucket
             setTimeout do(item) =>
                 => @on_entity_version(item['d'], item['id'], item['v'])
 
-        # If the response is the last page of the index, then we're done.
         if not ('mark' of response) or 'limit' of @options
-            # 1. Unset the "currently doing an index request" state flag
             @index_request = false
-            # 2. Set the CV. @todo We should be checking the CV for each page request.
             if 'current' of response
                 @data.last_cv = response['current']
                 @_save_meta()
             else
                 @data.last_cv = 0
-            # 3. If it wasn't already called above by `@on_entity_version()`, call `@_index_loaded()`, which sets `@initialized`.
             if loaded is 0
                 @_index_loaded()
-        # Otherwise, we need to request the next page.
         else
-            # 1. Reset the "currently doing an index request" state flag
             @index_request = true
             console.log "#{@name}: index last process time: #{@now() - now}, page_delay: #{@options['page_delay']}"
-            # 2. Wait `@options['page_delay']` milliseconds and request the next 100 items.
             mark = response['mark']
             page_req = (mark) =>
-                # Request: Index, with data, from item {mark}, since the beginning of time, return 100 items
                 @send("i:1:#{mark}::100")
                 @irequest_time = @now()
 
             setTimeout( (do(mark) =>
                 => page_req(mark)), @options['page_delay'])
 
-    # Useless? Never called.
     on_index_error: =>
         console.log "#{@name}: index doesnt exist or other error"
 
@@ -502,7 +350,6 @@ class bucket
             @data.store[id]['id'] = id
             @data.store[id]['object'] = data
             @data.store[id]['version'] = parseInt(version)
-            @_save_entity id
 
             notify_cb id, data_copy, version
             @notify_index[id] = true
@@ -513,16 +360,12 @@ class bucket
             if to_load is 0 and @index_request is false
                 @_index_loaded()
 
-    # ### `_index_loaded()`
     _index_loaded: =>
         console.log "#{@name}: index loaded, initialized: #{@initialized}"
-        # Fire the `ready` event callback,
         if @initialized is false
             @cb_r()
-        # Unset the "currently doing an index request" state flag,
         @initialized = true
         console.log "#{@name}: retrieve changes from index loaded"
-        # and ask for changes that have occurred since the index was processed.
         @retrieve_changes()
 
     # id: id of object
@@ -531,7 +374,7 @@ class bucket
     # diff: the newly received incoming diff (orig_object + diff = new_object)
     _notify_client: (key, new_object, orig_object, diff, version) =>
         console.log "#{@name}: _notify_client(#{key}, #{new_object}, #{orig_object}, #{JSON.stringify(diff)})"
-        if not @cb_l? or not @started
+        if not @cb_l?
             console.log "#{@name}: no get callback, notifying without transform"
             @cb_n key, new_object, version
             return
@@ -632,16 +475,15 @@ class bucket
         if s_data['last']? and @jd.entries(s_data['last']) > 0
             if @jd.equals s_data['object'], s_data['last']
                 s_data['last'] = null
-#				@_remove_entity id
+                @_remove_entity id
                 return false
 
         change = @_make_change id
         if change?
             s_data['change'] = change
-            @_save_entity id
             @_queue_change change
-#		else
-#			@_remove_entity id
+        else
+            @_remove_entity id
         return true
 
     update: (id, object) =>
@@ -727,7 +569,6 @@ class bucket
             if 'sendfull' of s_data
                 change['d'] = @jd.deepCopy c_object
                 delete s_data['sendfull']
-                @_save_entity id
             else
                 change['v'] = @jd.object_diff s_data['object'], c_object
                 if @jd.entries(change['v']) is 0
@@ -737,39 +578,27 @@ class bucket
 #        console.log "_make_change(#{id}) returning: #{JSON.stringify(change)}"
         return change
 
-    # ### `_queue_change()`
-    # Send a change to the server, and queue it to resend on failure.
     _queue_change: (change) =>
         if not change?
             return
 
         console.log "_queue_change(#{change['id']}:#{change['ccid']}): sending"
-        # Add to the pending queue.  It will be removed from the queue when the
-        # change is successfully processed by the server
         @data.send_queue.push change
-        @_save_queue()
-        # Request: Change, change data
         @send("c:#{JSON.stringify(change)}")
         @_check_pending()
 
-        # Set a new timeout to resend the queue using...
         if @data.send_queue_timer?
             clearTimeout(@data.send_queue_timer)
 
-        
         @data.send_queue_timer = setTimeout @_send_changes, @_send_backoff
 
-    # ### `_send_changes()`
-    # Runs on a timeout to send any pending changes.
-    # Queues each change to rerun in case of failure.
-    # For each failure, the timeout delay increases.
     _send_changes: =>
         if @data.send_queue.length is 0
             console.log "#{@name}: send_queue empty, done"
             @data.send_queue_timer = null
             return
         if not @s.connected
-            console.log "#{@name}: _send_changes: not connected", @_send_backoff
+            console.log "#{@name}: _send_changes: not connected"
         else
             for change in @data.send_queue
                 console.log "#{@name}: sending change: #{JSON.stringify(change)}"
@@ -790,7 +619,6 @@ class bucket
     on_changes: (response) =>
         check_updates = []
         reload_needed = false
-        # @todo reset @_send_backoff to @_backoff_min when we receive any data, not just changes
         @_send_backoff = @_backoff_min
         console.log "#{@name}: on_changes(): response="
         console.log response
@@ -798,19 +626,16 @@ class bucket
             id = change['id']
             console.log "#{@name}: processing id=#{id}"
             pending_to_delete = []
-            console.log change, @data.send_queue
             for pending in @data.send_queue
-                if change['clientid'] is @clientid
+                if change['clientid'] is @clientid and id is pending['id']
+#                    console.log "#{@name}: deleting change for id #{id}"
                     change['local'] = true
+                    pending_to_delete.push pending
                     check_updates.push id
-                    if id is pending['id']
-#						console.log "#{@name}: deleting change for id #{id}"
-                        pending_to_delete.push pending
             for pd in pending_to_delete
                 @data.store[pd['id']]['change'] = null
                 @_save_entity pd['id']
                 @data.send_queue = (p for p in @data.send_queue when p isnt pd)
-                @_save_queue()
             if pending_to_delete.length > 0
                 @_check_pending()
 #            console.log "#{@name}: send queue: #{JSON.stringify(@data.send_queue)}"
@@ -828,17 +653,14 @@ class bucket
                         console.log "#{@name}: on_changes(): bad version"
                         if change['id'] of @data.store
                             @data.store[change['id']]['version'] = null
-                            @_save_entity change['id']
                         reload_needed = true
                     when 440
                         console.log "#{@name}: on_change(): bad diff, sending full object"
                         @data.store[id]['sendfull'] = true
-                        @_save_entity id
                     else
                         console.log "#{@name}: error for last change, reloading"
                         if change['id'] of @data.store
                             @data.store[change['id']]['version'] = null
-                            @_save_entity change['id']
                         reload_needed = true
             else
                 op = change['o']
@@ -861,16 +683,14 @@ class bucket
                                 'last'      :   null
                                 'change'    :   null
                                 'check'     :   null
-                            @_save_entity id
                             s_data = @data.store[id]
 #                        console.log "#{@name}: processing modify for #{JSON.stringify(s_data)}"
                         orig_object = @jd.deepCopy s_data['object']
                         s_data['object'] = @jd.apply_object_diff s_data['object'], change['v']
                         s_data['version'] = change['ev']
-                        @_save_entity id
-                        
+
                         new_object = @jd.deepCopy s_data['object']
-                        
+
                         if not ('local' of change)
 #                            setTimeout do(change, new_object, orig_object) =>
 #                                => @_notify_client change['id'], new_object, orig_object, change['v']
@@ -884,7 +704,6 @@ class bucket
                             console.log "#{@name}: version mismatch couldnt apply change, change.ev:#{change['ev']}, s_data null"
                         if s_data?
                             @data.store[id]['version'] = null
-                            @_save_entity id
                         reload_needed = true
                 else
                     console.log "#{@name}: no operation found for change"

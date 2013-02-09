@@ -310,6 +310,8 @@ class bucket
                         catch error
                             console.log id, entity_copy, change
                 notify_client_from_localStorage.push [ id, entity_copy.object, null, null, entity_copy.version ]
+            # If we're using the backbone wrapper, the bucket.start() is probably being called in the Collections, which
+            # won't be initialized by the time we need to notify.  So do it async.
             setTimeout( () =>
                 for notify in notify_client_from_localStorage
                     @_notify_client.apply @, notify

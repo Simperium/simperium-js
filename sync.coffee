@@ -8,6 +8,8 @@ class bucket
         @space = "#{@options['app_id']}/#{@name}"
         @username = @options['username']
         @namespace = "#{@username}:#{@space}"
+        @users = []
+        @presence = null
 
         @clientid = null
         try
@@ -21,10 +23,10 @@ class bucket
             catch error
                 console.log "#{@name}: couldnt set clientid"
 
-        @cb_events = ['notify', 'notify_init', 'notify_version', 'local', 'get', 'ready', 'notify_pending', 'error']
+        @cb_events = ['notify', 'notify_init', 'notify_version', 'local', 'get', 'ready', 'notify_pending', 'error', 'user_join', 'user_left']
         @cbs = {}
         @cb_e = @cb_l = @cb_ni = @cb_np = null
-        @cb_n = @cb_nv = @cb_r = ->
+        @cb_n = @cb_nv = @cb_r = @cb_uj = @cb_ul = ->
 
         @initialized = false
         @authorized = false
@@ -83,6 +85,10 @@ class bucket
                     @cb_r = callback
                 when 'error'
                     @cb_e = callback
+                when 'user_join'
+                    @cb_uj = callback
+                when 'user_left'
+                    @cb_ul = callback
         else
             throw new Error("unsupported callback event")
 
@@ -184,6 +190,22 @@ class bucket
             return false
         return true
 
+    _presence_change: (id, data, version, diff) =>
+        console.log "#{@name}: notify for #{id} users: #{JSON.stringify(@users)}"
+        if data is null
+            if id in @users
+                users = []
+                users.push name for name in @users when name isnt id
+                @users = users
+                @cb_ul id
+        else if id not in @users
+                console.log "#{@name}: #{id} not found in users"
+                @users.push id
+                @cb_uj id
+
+    get_users: =>
+        @users
+
     start: =>
         console.log "#{@space}: started initialized: #{@initialized} authorized: #{@authorized}"
         @namespace = "#{@username}:#{@space}"
@@ -257,6 +279,15 @@ class bucket
             else
                 entity = JSON.parse(entitydata)
                 @on_entity_version entity['data'], key, version
+        else if data.substr(0, 2) == "o:"
+            opts = JSON.parse(data.substr(2))
+            console.log "#{@name}: got options: #{JSON.stringify(opts)}"
+            if @name.substr(0, 2) != "__" and 'shared' of opts and opts['shared'] is true
+                console.log "#{@name}: is presence enabled"
+                if not @presence
+                    @presence = @s.bucket("__#{@name}__")
+                    @presence.on('notify', @_presence_change)
+                    @presence.start()
         else
             console.log "unknown message: #{data}"
 
@@ -376,7 +407,7 @@ class bucket
         console.log "#{@name}: _notify_client(#{key}, #{new_object}, #{orig_object}, #{JSON.stringify(diff)})"
         if not @cb_l?
             console.log "#{@name}: no get callback, notifying without transform"
-            @cb_n key, new_object, version
+            @cb_n key, new_object, version, diff
             return
 
         c_object = @cb_l key
@@ -447,11 +478,11 @@ class bucket
                 new_data = @jd.apply_object_diff t_object, t_diff
 #                console.log "transformed diff: #{JSON.stringify(t_diff)}"
 #            console.log "#{@name}: notifying client of new data for #{key}: #{JSON.stringify(new_data)}"
-            @cb_n key, new_data, version
+            @cb_n key, new_data, version, diff
         else if new_object
-            @cb_n key, new_object, version
+            @cb_n key, new_object, version, diff
         else
-            @cb_n key, null, null
+            @cb_n key, null, null, null
 
     _check_update: (id) =>
         console.log "#{@name}: _check_update(#{id})"
@@ -757,7 +788,7 @@ class simperium
             return false
 
     constructor: (@app_id, @options) ->
-        @bversion = 2012121301
+        @bversion = 2013032601
         @jd = new jsondiff()
         @dmp = jsondiff.dmp
         @auth_token = null
@@ -770,13 +801,13 @@ class simperium
                 @sock_opts[name] = val
 
         if not ('host' of @options) then @options['host'] = 'api.simperium.com'
-        if not ('port' of @options) then @options['port'] = 80
-        if 'token' of @options then @auth_token = @options['token']
-
-        if @options['host'].indexOf("simperium.com") != -1
+        if @options['host'].indexOf("simperium.com") != -1 and not ('port' of @options)
             scheme = "https"
         else
             scheme = "http"
+
+        if not ('port' of @options) then @options['port'] = 80
+        if 'token' of @options then @auth_token = @options['token']
 
         @buckets = {}
         @channels = 0

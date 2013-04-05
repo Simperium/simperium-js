@@ -223,13 +223,15 @@ class bucket
     # return server copy of object if we have it
     get: (id) =>
         if id of @data.store and @data.store[id]['object']?
-            @jd.deepCopy(@data.store[id]['object'])
+            @jd.deepCopy(@data.store[id]['object'][id])
         else
             null
 
     # more convenient name for update
     set: (id, data) =>
-        @update(id, data)
+        newdata = {}
+        newdata[id] = data
+        @update(id, newdata)
 
     # queue a delete
     delete: (id) =>

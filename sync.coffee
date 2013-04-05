@@ -220,6 +220,33 @@ class bucket
             console.log "#{@name}: retrieve changes from start"
             @retrieve_changes()
 
+    # return server copy of object if we have it
+    get: (id) =>
+        if id of @data.store and @data.store[id]['object']?
+            @jd.deepCopy(@data.store[id]['object'])
+        else
+            null
+
+    # more convenient name for update
+    set: (id, data) =>
+        @update(id, data)
+
+    # queue a delete
+    delete: (id) =>
+        @update(id, null)
+
+    # number of objects in bucket
+    items: =>
+        n = 0
+        for own key, value of @data.store
+            if 'object' of value and value['object']?
+                n++
+        n
+
+    # boolean if we have any objects
+    isEmpty: =>
+        @items() is 0
+
     on_data: (data) =>
         if data.substr(0, 5) == "auth:"
             user = data.substr(5)
@@ -487,7 +514,7 @@ class bucket
         return true
 
     update: (id, object) =>
-        if arguments.length is 1 
+        if arguments.length is 1
             if @cb_l?
                 object = @cb_l id
                 if @jd.typeOf(object) is 'array'
@@ -739,6 +766,7 @@ class bucket
             if diff
                 @_last_pending = curr_pending
                 @cb_np curr_pending
+
 
 
 class simperium

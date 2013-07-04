@@ -788,7 +788,7 @@ class simperium
             return false
 
     constructor: (@app_id, @options) ->
-        @bversion = 2013032601
+        @bversion = 2013070403
         @jd = new jsondiff()
         @dmp = jsondiff.dmp
         @auth_token = null
@@ -817,7 +817,7 @@ class simperium
         if not ('page_delay' of @options)
             @options['page_delay'] = 0
 
-        @options['prefix'] = 'sock'
+        @options['prefix'] = "sock/1/#{@appid}"
 
         @options['port'] = parseInt(@options['port'])
         if @options['port'] != 80 and @options['port'] != 443

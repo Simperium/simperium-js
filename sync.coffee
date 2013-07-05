@@ -786,7 +786,7 @@ class simperium
         if not ('page_delay' of @options)
             @options['page_delay'] = 0
 
-        @options['prefix'] = "sock/1/#{@appid}"
+        @options['prefix'] = "sock/1/#{@app_id}"
 
         @options['port'] = parseInt(@options['port'])
         if @options['port'] != 80 and @options['port'] != 443

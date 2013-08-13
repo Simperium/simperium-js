@@ -257,6 +257,12 @@ class bucket
             else
                 entity = JSON.parse(entitydata)
                 @on_entity_version entity['data'], key, version
+        else if data.substr(0, 2) == "o:"
+            options = JSON.parse(data.substr(2))
+            console.log "#{@name}: options received:#{JSON.stringify(options)}"
+            if 'schema' of options
+                @schema = options['schema']
+                console.log "#{@name}: has schema: #{JSON.stringify(@schema)}"
         else
             console.log "unknown message: #{data}"
 
@@ -398,7 +404,7 @@ class bucket
         if c_object? and orig_object?
 #            console.log "going to do object diff new diff: #{JSON.stringify(diff)}"
 
-            o_diff = @jd.object_diff orig_object, c_object
+            o_diff = @jd.object_diff orig_object, c_object, @schema
             console.log "client/server version diff: #{JSON.stringify(o_diff)}"
             if @jd.entries(o_diff) is 0
                 console.log "local diff 0 entries"
@@ -423,7 +429,7 @@ class bucket
                 # new client data = (orig_object + diff) + T(o_diff)
                 # new client data = new_object + T(o_diff)
                 # new client data = new_object + t_diff
-                t_diff = @jd.transform_object_diff o_diff, diff, orig_object
+                t_diff = @jd.transform_object_diff o_diff, diff, orig_object, @schema
                 t_object = new_object
 
             if cursor
@@ -570,7 +576,8 @@ class bucket
                 change['d'] = @jd.deepCopy c_object
                 delete s_data['sendfull']
             else
-                change['v'] = @jd.object_diff s_data['object'], c_object
+                console.log "#{@name}: object_diff ghost: #{JSON.stringify(s_data['object'])} client: #{JSON.stringify(c_object)} schema: #{JSON.stringify(@schema)}"
+                change['v'] = @jd.object_diff s_data['object'], c_object, @schema
                 if @jd.entries(change['v']) is 0
                     change = null
         else

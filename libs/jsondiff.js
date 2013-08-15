@@ -214,7 +214,7 @@
     };
 
     jsondiff.prototype.object_diff = function(a, b, policy) {
-      var diffs, key;
+      var diffs, key, sub_policy;
       diffs = {};
       if ((policy != null) && 'attributes' in policy) {
         policy = policy['attributes'];
@@ -223,13 +223,13 @@
       for (key in a) {
         if (!__hasProp.call(a, key)) continue;
         if ((policy != null) && key in policy) {
-          policy = policy[key];
+          sub_policy = policy[key];
         } else {
-          policy = null;
+          sub_policy = null;
         }
         if (key in b) {
           if (!this.equals(a[key], b[key])) {
-            diffs[key] = this.diff(a[key], b[key], policy);
+            diffs[key] = this.diff(a[key], b[key], sub_policy);
           }
         } else {
           diffs[key] = {
@@ -309,8 +309,8 @@
           };
         case 'array':
           return {
-            'o': 'L',
-            'v': this.list_diff(a, b, policy)
+            'o': 'r',
+            'v': b
           };
         case 'object':
           return {
@@ -573,6 +573,9 @@
     jsondiff.prototype.transform_object_diff = function(ad, bd, s, policy) {
       var a_patches, ab_text, ad_new, aop, b_patches, b_text, bop, dmp_diffs, key, sk, _ref;
       ad_new = this.deepCopy(ad);
+      if ((policy != null) && 'attributes' in policy) {
+        policy = policy['attributes'];
+      }
       for (key in ad) {
         if (!__hasProp.call(ad, key)) continue;
         aop = ad[key];

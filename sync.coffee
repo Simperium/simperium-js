@@ -205,6 +205,8 @@ class bucket
                     name:   @name
                     clientid: @clientid
                     build: @s.bversion
+                if @options.presence_debounce?
+                    opts.presence_debounce = @options.presence_debounce
                 if not @initialized
                     opts.cmd = index_query
                 @send("init:#{JSON.stringify(opts)}")

@@ -17,7 +17,7 @@ class bucket
         if not @clientid? or @clientid.indexOf("sjs") != 0
             @clientid = "sjs-#{@s.bversion}-#{@uuid(5)}"
             try
-                localStorage.setItem "#{@namespace}/clientid"
+                localStorage.setItem "#{@namespace}/clientid", @clientid
             catch error
                 console.log "#{@name}: couldnt set clientid"
 

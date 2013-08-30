@@ -188,11 +188,11 @@
     };
 
     jsondiff.prototype._serialize_to_text = function(a) {
-      var i, lena, s, _ref;
+      var i, s, _i, _len;
       s = '';
-      lena = a.length;
-      for (i = 0, _ref = lena - 1; 0 <= _ref ? i <= _ref : i >= _ref; 0 <= _ref ? i++ : i--) {
-        s += "" + (JSON.stringify(a[i])) + "\n";
+      for (_i = 0, _len = a.length; _i < _len; _i++) {
+        i = a[_i];
+        s += "" + (JSON.stringify(i)) + "\n";
       }
       return s;
     };

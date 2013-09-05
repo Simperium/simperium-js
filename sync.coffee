@@ -2,6 +2,7 @@ class bucket
     constructor: (@s, @name, b_opts) ->
         @jd = @s.jd
         @options = @jd.deepCopy @s.options
+        @server_options = {}
         for own name, val of b_opts
             @options[name] = val
         @chan = @options['n']
@@ -259,6 +260,8 @@ class bucket
             else
                 entity = JSON.parse(entitydata)
                 @on_entity_version entity['data'], key, version
+        else if data.substr(0, 2) == "o:"
+            @server_options = JSON.parse(data.substr(2))
         else
             console.log "unknown message: #{data}"
 
@@ -500,8 +503,15 @@ class bucket
 
         if not id? and not object?
             return false
+
+        if 'expose_namespace' of @server_options and @server_options['expose_namespace']
+            allowed_slashes = 1
+        else
+            allowed_slashes = 0
+
         if id?
-            if id.length is 0 or id.indexOf('/') isnt -1
+            slashes = id.split( '/' ).length - 1;
+            if id.length is 0 or slashes > allowed_slashes
                 return false
         else
             id = @uuid()

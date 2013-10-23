@@ -393,12 +393,12 @@ class bucket
         console.log "#{@name}: retrieve changes from index loaded"
         @retrieve_changes()
 
-    # id: id of object
+    # key: id of object
     # new_object: latest server version of object (includes latest diff)
     # orig_object: the previous server version of object that the client had
     # diff: the newly received incoming diff (orig_object + diff = new_object)
     _notify_client: (key, new_object, orig_object, diff, version) =>
-        key = @_entity_id( id )
+        key = @_entity_id( key )
         console.log "#{@name}: _notify_client(#{key}, #{new_object}, #{orig_object}, #{JSON.stringify(diff)})"
         if not @cb_l?
             console.log "#{@name}: no get callback, notifying without transform"

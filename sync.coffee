@@ -130,6 +130,19 @@ class bucket
                 return false
         return true
 
+    _entity_id: ( id ) =>
+        if not id?
+            return id
+
+        if not 'expose_namespace' of @server_options or not @server_options['expose_namespace']
+            return id
+
+        pieces = id.split( '/' )
+        if pieces.length > 1
+            return id
+
+        return @server_options['namespace'] + '/' + id
+
     _load_data: =>
         if not @s.supports_html5_storage()
             return
@@ -142,6 +155,7 @@ class bucket
             key = localStorage.key(i)
             if key? and key.substr(0, p_len) is prefix
                 id = key.substr(p_len, key.length-p_len)
+                id = @_entity_id( id )
                 try
                     data = JSON.parse localStorage.getItem key
                 catch error
@@ -158,6 +172,7 @@ class bucket
         return loaded
 
     _save_entity: (id) =>
+        id = @_entity_id( id )
         if not @s.supports_html5_storage()
             return false
         key = "#{@namespace}/e/#{id}"
@@ -176,6 +191,7 @@ class bucket
             return false
 
     _remove_entity: (id) =>
+        id = @_entity_id( id )
         if not @s.supports_html5_storage()
             return false
         key = "#{@namespace}/e/#{id}"
@@ -290,6 +306,7 @@ class bucket
 
         loaded = 0
         for item in response['index']
+            item['id'] = @_entity_id( item['id'] )
             @notify_index[item['id']] = false
             loaded++
             setTimeout do(item) =>
@@ -319,6 +336,7 @@ class bucket
         console.log "#{@name}: index doesnt exist or other error"
 
     load_versions: (id, versions) =>
+        id = @_entity_id( id )
         if not (id of @data.store)
             return false
         min = Math.max(@data.store[id]['version'] - (versions+1), 1)
@@ -327,10 +345,12 @@ class bucket
             @send("e:#{id}.#{v}")
 
     get_version: (id, version) =>
+        id = @_entity_id( id )
         evkey = "#{id}.#{version}"
         @send("e:#{evkey}")
 
     on_entity_version: (data, id, version) =>
+        id = @_entity_id( id )
         console.log "#{@name}: on_entity_version(#{data}, #{id}, #{version})"
         if data?
             data_copy = @jd.deepCopy(data)
@@ -378,6 +398,7 @@ class bucket
     # orig_object: the previous server version of object that the client had
     # diff: the newly received incoming diff (orig_object + diff = new_object)
     _notify_client: (key, new_object, orig_object, diff, version) =>
+        key = @_entity_id( id )
         console.log "#{@name}: _notify_client(#{key}, #{new_object}, #{orig_object}, #{JSON.stringify(diff)})"
         if not @cb_l?
             console.log "#{@name}: no get callback, notifying without transform"
@@ -459,6 +480,7 @@ class bucket
             @cb_n key, null, null
 
     _check_update: (id) =>
+        id = @_entity_id( id )
         console.log "#{@name}: _check_update(#{id})"
         if not (id of @data.store)
             return false
@@ -492,6 +514,7 @@ class bucket
         return true
 
     update: (id, object) =>
+        id = @_entity_id( id )
         if arguments.length is 1 
             if @cb_l?
                 object = @cb_l id
@@ -515,6 +538,8 @@ class bucket
                 return false
         else
             id = @uuid()
+            id = @_entity_id( id )
+
         if not (id of @data.store)
             @data.store[id] =
                 'id'        :   id
@@ -547,6 +572,7 @@ class bucket
 
         # create change objects
     _make_change: (id) =>
+        id = @_entity_id( id )
 #        console.log "#{@name}: _make_change(#{id})"
         s_data = @data.store[id]
 
@@ -636,16 +662,17 @@ class bucket
         console.log response
         for change in response
             id = change['id']
+            id = @_entity_id( id )
             console.log "#{@name}: processing id=#{id}"
             pending_to_delete = []
             for pending in @data.send_queue
-                if change['clientid'] is @clientid and id is pending['id']
+                if change['clientid'] is @clientid and id is @_entity_id( pending['id'] )
 #                    console.log "#{@name}: deleting change for id #{id}"
                     change['local'] = true
                     pending_to_delete.push pending
                     check_updates.push id
             for pd in pending_to_delete
-                @data.store[pd['id']]['change'] = null
+                @data.store[@_entity_id(pd['id'])]['change'] = null
                 @_save_entity pd['id']
                 @data.send_queue = (p for p in @data.send_queue when p isnt pd)
             if pending_to_delete.length > 0
@@ -656,23 +683,23 @@ class bucket
                 switch change['error']
                     when 412
                         console.log "#{@name}: on_changes(): empty change, dont check"
-                        idx = check_updates.indexOf(change['id'])
+                        idx = check_updates.indexOf(id)
                         if idx > -1
                             check_updates.splice(idx, 1)
                     when 409
                         console.log "#{@name}: on_changes(): duplicate change, ignoring"
                     when 405
                         console.log "#{@name}: on_changes(): bad version"
-                        if change['id'] of @data.store
-                            @data.store[change['id']]['version'] = null
+                        if id of @data.store
+                            @data.store[id]['version'] = null
                         reload_needed = true
                     when 440
                         console.log "#{@name}: on_change(): bad diff, sending full object"
                         @data.store[id]['sendfull'] = true
                     else
                         console.log "#{@name}: error for last change, reloading"
-                        if change['id'] of @data.store
-                            @data.store[change['id']]['version'] = null
+                        if id of @data.store
+                            @data.store[id]['version'] = null
                         reload_needed = true
             else
                 op = change['o']
@@ -681,8 +708,8 @@ class bucket
                     @_remove_entity id
                     if not ('local' of change)
 #                        setTimeout do(change) =>
-#                            => @_notify_client change['id'], null, null, null
-                        @_notify_client change['id'], null, null, null, null
+#                            => @_notify_client id, null, null, null
+                        @_notify_client id, null, null, null, null
 
                 else if op is 'M'
                     s_data = @data.store[id]
@@ -705,8 +732,8 @@ class bucket
 
                         if not ('local' of change)
 #                            setTimeout do(change, new_object, orig_object) =>
-#                                => @_notify_client change['id'], new_object, orig_object, change['v']
-                            @_notify_client change['id'], new_object, orig_object, change['v'], change['ev']
+#                                => @_notify_client id, new_object, orig_object, change['v']
+                            @_notify_client id, new_object, orig_object, change['v'], change['ev']
                     else if s_data? and s_data['version']? and change['ev'] <= s_data['version']
                         console.log "#{@name}: old or duplicate change received, ignoring, change.ev=#{change['ev']}, s_data.version:#{s_data['version']}"
                     else
@@ -732,9 +759,9 @@ class bucket
         return
 
     pending: =>
-        x = (change['id'] for change in @data.send_queue)
+        x = (@_entity_id( change['id'] ) for change in @data.send_queue)
         console.log "#{@name}: pending: #{JSON.stringify(x)}"
-        (change['id'] for change in @data.send_queue)
+        (@_entity_id( change['id'] ) for change in @data.send_queue)
 
     _check_pending: =>
         if @cb_np?

@@ -259,8 +259,6 @@ class bucket
         else if data.substr(0, 4) == "cv:?"
             console.log "#{@name}: cv out of sync, refreshing index"
             setTimeout => @_refresh_store()
-        else if data.substr(0, 3) == "c:?"
-            # do nothing?
         else if data.substr(0, 2) == "c:"
             changes = JSON.parse(data.substr(2))
             if @data.last_cv is "0" and changes.length is 0 and not @cv_check

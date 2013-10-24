@@ -11,16 +11,19 @@ class bucket
         @namespace = "#{@username}:#{@space}"
 
         @clientid = null
-        try
-            @clientid = localStorage.getItem "#{@namespace}/clientid"
-        catch error
-            @clientid = null
+        persist_clientid = 'persist_clientid' of @options
+        if persist_clientid
+            try
+                @clientid = localStorage.getItem "#{@namespace}/clientid"
+            catch error
+                @clientid = null
         if not @clientid? or @clientid.indexOf("sjs") != 0
             @clientid = "sjs-#{@s.bversion}-#{@uuid(5)}"
-            try
-                localStorage.setItem "#{@namespace}/clientid", @clientid
-            catch error
-                console.log "#{@name}: couldnt set clientid"
+            if persist_clientid
+                try
+                    localStorage.setItem "#{@namespace}/clientid", @clientid
+                catch error
+                    console.log "#{@name}: couldnt set clientid"
 
         @cb_events = ['notify', 'notify_init', 'notify_version', 'local', 'get', 'ready', 'notify_pending', 'error']
         @cbs = {}

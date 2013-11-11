@@ -780,7 +780,7 @@ class simperium
         if not ('port' of @options) then @options['port'] = 80
         if 'token' of @options then @auth_token = @options['token']
 
-        if @options['host'].indexOf("simperium.com") != -1
+        if @options['host'].indexOf("api.simperium.com") != -1
             scheme = "https"
         else
             scheme = "http"

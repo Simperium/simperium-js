@@ -19,7 +19,7 @@ class bucket
             try
                 localStorage.setItem "#{@namespace}/clientid"
             catch error
-                console.log "#{@name}: couldnt set clientid"
+                @s._log "#{@name}: couldnt set clientid"
 
         @cb_events = ['notify', 'notify_init', 'notify_version', 'local', 'get', 'ready', 'notify_pending', 'error']
         @cbs = {}
@@ -40,9 +40,9 @@ class bucket
         if not ('nostore' of @options)
             @_load_meta()
             @loaded = @_load_data()
-            console.log "#{@name}: localstorage loaded #{@loaded} entities"
+            @s._log "#{@name}: localstorage loaded #{@loaded} entities"
         else
-            console.log "#{@name}: not loading from localstorage"
+            @s._log "#{@name}: not loading from localstorage"
             @loaded = 0
 
         @_last_pending = null
@@ -50,7 +50,7 @@ class bucket
         @_backoff_max = 120000
         @_backoff_min = 15000
 
-        console.log "#{@namespace}: bucket created: opts: #{JSON.stringify(@options)}"
+        @s._log "#{@namespace}: bucket created: opts: #{JSON.stringify(@options)}"
 
     S4: ->
         (((1+Math.random())*0x10000)|0).toString(16).substring(1)
@@ -91,14 +91,14 @@ class bucket
             return
         total = 0
         for own key, datastr of localStorage
-            console.log "[#{key}]: #{datastr}"
+            @s._log "[#{key}]: #{datastr}"
             total = total + 1
-        console.log "#{total} total"
+        @s._log "#{total} total"
 
     _save_meta: ->
         if not @s.supports_html5_storage()
             return false
-        console.log "#{@name}: save_meta ccid:#{@data.ccid} cv:#{@data.last_cv}"
+        @s._log "#{@name}: save_meta ccid:#{@data.ccid} cv:#{@data.last_cv}"
         try
             localStorage.setItem "#{@namespace}/ccid", @data.ccid
             localStorage.setItem "#{@namespace}/last_cv", @data.last_cv
@@ -113,7 +113,7 @@ class bucket
         @data.ccid ?= 1
         @data.last_cv = localStorage.getItem "#{@namespace}/last_cv"
         @data.last_cv ?= 0
-        console.log "#{@name}: load_meta ccid:#{@data.ccid} cv:#{@data.last_cv}"
+        @s._log "#{@name}: load_meta ccid:#{@data.ccid} cv:#{@data.last_cv}"
 
     _verify: (data) =>
         if !('object' of data) or !('version' of data)
@@ -152,7 +152,7 @@ class bucket
                     @data.store[id] = data
                     loaded = loaded + 1
                 else
-                    console.log "ignoring CORRUPT data: #{JSON.stringify(data)}"
+                    @s._log "ignoring CORRUPT data: #{JSON.stringify(data)}"
                     @_remove_entity id
         return loaded
 
@@ -168,10 +168,10 @@ class bucket
             return false
         ret_data = JSON.parse localStorage.getItem key
         if @jd.equals store_data, ret_data
-#            console.log "saved #{key} len: #{datastr.length}"
+#            @s._log "saved #{key} len: #{datastr.length}"
             return true
         else
-#            console.log "ERROR STORING ENTITY: store: #{JSON.stringify(store_data)}, retrieve: #{JSON.stringify(ret_data)}"
+#            @s._log "ERROR STORING ENTITY: store: #{JSON.stringify(store_data)}, retrieve: #{JSON.stringify(ret_data)}"
             return false
 
     _remove_entity: (id) =>
@@ -185,7 +185,7 @@ class bucket
         return true
 
     start: =>
-        console.log "#{@space}: started initialized: #{@initialized} authorized: #{@authorized}"
+        @s._log "#{@space}: started initialized: #{@initialized} authorized: #{@authorized}"
         @namespace = "#{@username}:#{@space}"
         @started = true
         @first = false
@@ -208,23 +208,23 @@ class bucket
                 if not @initialized
                     opts.cmd = index_query
                 @send("init:#{JSON.stringify(opts)}")
-                console.log "#{@name}: sent init #{JSON.stringify(opts)} waiting for auth"
+                @s._log "#{@name}: sent init #{JSON.stringify(opts)} waiting for auth"
             else
-                console.log "#{@name}: waiting for connect"
+                @s._log "#{@name}: waiting for connect"
             return
         if not @initialized
             if not @first
                 @notify_index = {}
                 @_refresh_store()
         else
-            console.log "#{@name}: retrieve changes from start"
+            @s._log "#{@name}: retrieve changes from start"
             @retrieve_changes()
 
     on_data: (data) =>
         if data.substr(0, 5) == "auth:"
             user = data.substr(5)
             if user is "expired"
-                console.log "auth expired"
+                @s._log "auth expired"
                 @started = false
                 if @cb_e?
                     @cb_e "auth"
@@ -235,7 +235,7 @@ class bucket
                 if @initialized
                     @start()
         else if data.substr(0, 4) == "cv:?"
-            console.log "#{@name}: cv out of sync, refreshing index"
+            @s._log "#{@name}: cv out of sync, refreshing index"
             setTimeout => @_refresh_store()
         else if data.substr(0, 2) == "c:"
             changes = JSON.parse(data.substr(2))
@@ -244,7 +244,7 @@ class bucket
                 @_refresh_store()
             @on_changes changes
         else if data.substr(0, 2) == "i:"
-            console.log "#{@name}:  index msg received: #{@now() - @irequest_time}"
+            @s._log "#{@name}:  index msg received: #{@now() - @irequest_time}"
             @on_index_page JSON.parse(data.substr(2))
         else if data.substr(0, 2) == "e:"
             key_end = data.indexOf("\n")
@@ -259,20 +259,22 @@ class bucket
                 @on_entity_version entity['data'], key, version
         else if data.substr(0, 2) == "o:"
             options = JSON.parse(data.substr(2))
-            console.log "#{@name}: options received:#{JSON.stringify(options)}"
+            @s._log "#{@name}: options received:#{JSON.stringify(options)}"
             if 'schema' of options
                 @schema = options['schema']
-                console.log "#{@name}: has schema: #{JSON.stringify(@schema)}"
+                @s._log "#{@name}: has schema: #{JSON.stringify(@schema)}"
+        else if data.substr(0, 5) == "index"
+            @_remote_index()
         else
-            console.log "unknown message: #{data}"
+            @s._log "unknown message: #{data}"
 
     send: (message) =>
-        console.log "sending: #{@chan}:#{message}"
+        @s._log "sending: #{@chan}:#{message}"
         @s.send("#{@chan}:#{message}")
 
     _refresh_store: =>
         # load the index
-        console.log "#{@name}: _refresh_store(): loading index"
+        @s._log "#{@name}: _refresh_store(): loading index"
         if 'limit' of @options
             index_query = "i:1:::#{@options['limit']}"
         else
@@ -285,9 +287,9 @@ class bucket
     on_index_page: (response) =>
         now = @now()
         elapsed = now - @irequest_time
-        console.log "#{@name}: index response time: #{elapsed}"
-        console.log "#{@name}: on_index_page(): index page received, current= #{response['current']}"
-        console.log response
+        @s._log "#{@name}: index response time: #{elapsed}"
+        @s._log "#{@name}: on_index_page(): index page received, current= #{response['current']}"
+        @s._log response
 
         loaded = 0
         for item in response['index']
@@ -307,7 +309,7 @@ class bucket
                 @_index_loaded()
         else
             @index_request = true
-            console.log "#{@name}: index last process time: #{@now() - now}, page_delay: #{@options['page_delay']}"
+            @s._log "#{@name}: index last process time: #{@now() - now}, page_delay: #{@options['page_delay']}"
             mark = response['mark']
             page_req = (mark) =>
                 @send("i:1:#{mark}::100")
@@ -317,14 +319,14 @@ class bucket
                 => page_req(mark)), @options['page_delay'])
 
     on_index_error: =>
-        console.log "#{@name}: index doesnt exist or other error"
+        @s._log "#{@name}: index doesnt exist or other error"
 
     load_versions: (id, versions) =>
         if not (id of @data.store)
             return false
         min = Math.max(@data.store[id]['version'] - (versions+1), 1)
         for v in [min..@data.store[id]['version']-1]
-            console.log "#{@name}: loading version #{id}.#{v}"
+            @s._log "#{@name}: loading version #{id}.#{v}"
             @send("e:#{id}.#{v}")
 
     get_version: (id, version) =>
@@ -332,7 +334,7 @@ class bucket
         @send("e:#{evkey}")
 
     on_entity_version: (data, id, version) =>
-        console.log "#{@name}: on_entity_version(#{data}, #{id}, #{version})"
+        @s._log "#{@name}: on_entity_version(#{data}, #{id}, #{version})"
         if data?
             data_copy = @jd.deepCopy(data)
         else
@@ -367,11 +369,11 @@ class bucket
                 @_index_loaded()
 
     _index_loaded: =>
-        console.log "#{@name}: index loaded, initialized: #{@initialized}"
+        @s._log "#{@name}: index loaded, initialized: #{@initialized}"
         if @initialized is false
             @cb_r()
         @initialized = true
-        console.log "#{@name}: retrieve changes from index loaded"
+        @s._log "#{@name}: retrieve changes from index loaded"
         @retrieve_changes()
 
     # id: id of object
@@ -379,9 +381,9 @@ class bucket
     # orig_object: the previous server version of object that the client had
     # diff: the newly received incoming diff (orig_object + diff = new_object)
     _notify_client: (key, new_object, orig_object, diff, version) =>
-        console.log "#{@name}: _notify_client(#{key}, #{new_object}, #{orig_object}, #{JSON.stringify(diff)})"
+        @s._log "#{@name}: _notify_client(#{key}, #{new_object}, #{orig_object}, #{JSON.stringify(diff)})"
         if not @cb_l?
-            console.log "#{@name}: no get callback, notifying without transform"
+            @s._log "#{@name}: no get callback, notifying without transform"
             @cb_n key, new_object, version
             return
 
@@ -402,22 +404,22 @@ class bucket
                     offsets[1] = cursor['endOffset']
 
         if c_object? and orig_object?
-#            console.log "going to do object diff new diff: #{JSON.stringify(diff)}"
+#            @s._log "going to do object diff new diff: #{JSON.stringify(diff)}"
 
             o_diff = @jd.object_diff orig_object, c_object, @schema
-            console.log "client/server version diff: #{JSON.stringify(o_diff)}"
+            @s._log "client/server version diff: #{JSON.stringify(o_diff)}"
             if @jd.entries(o_diff) is 0
-                console.log "local diff 0 entries"
+                @s._log "local diff 0 entries"
                 t_diff = diff
                 t_object = orig_object
             else
-                console.log "o_diff"
-                console.log o_diff
-                console.log "orig_object"
-                console.log orig_object
-                console.log "c_object"
-                console.log c_object
-                console.log "client modified doing transform"
+                @s._log "o_diff"
+                @s._log o_diff
+                @s._log "orig_object"
+                @s._log orig_object
+                @s._log "c_object"
+                @s._log c_object
+                @s._log "client modified doing transform"
                 # client has local modifications, so we need to transform to apply new
                 # changes to client's data
                 # this transforms >o_diff< which is the local client modification with
@@ -445,14 +447,14 @@ class bucket
                         cursor['collapsed'] = true
                 @s._restoreCursor element, cursor
             else
-                console.log "in regular apply_object_diff"
-                console.log "t_object"
-                console.log t_object
-                console.log "t_diff"
-                console.log t_diff
+                @s._log "in regular apply_object_diff"
+                @s._log "t_object"
+                @s._log t_object
+                @s._log "t_diff"
+                @s._log t_diff
                 new_data = @jd.apply_object_diff t_object, t_diff
-#                console.log "transformed diff: #{JSON.stringify(t_diff)}"
-#            console.log "#{@name}: notifying client of new data for #{key}: #{JSON.stringify(new_data)}"
+#                @s._log "transformed diff: #{JSON.stringify(t_diff)}"
+#            @s._log "#{@name}: notifying client of new data for #{key}: #{JSON.stringify(new_data)}"
             @cb_n key, new_data, version
         else if new_object
             @cb_n key, new_object, version
@@ -460,7 +462,7 @@ class bucket
             @cb_n key, null, null
 
     _check_update: (id) =>
-        console.log "#{@name}: _check_update(#{id})"
+        @s._log "#{@name}: _check_update(#{id})"
         if not (id of @data.store)
             return false
         s_data = @data.store[id]
@@ -500,7 +502,7 @@ class bucket
                     object = object[0]
             else
                 throw new Error("missing 'local' callback")
-        console.log "#{@name}: update(#{id})"
+        @s._log "#{@name}: update(#{id})"
 
         if not id? and not object?
             return false
@@ -523,7 +525,7 @@ class bucket
 
         for change in @data.send_queue
             if String(id) is change['id']
-                console.log "#{@name}: update(#{id}) found pending change, aborting"
+                @s._log "#{@name}: update(#{id}) found pending change, aborting"
                 return null
 
         if s_data['check']?
@@ -541,7 +543,7 @@ class bucket
 
         # create change objects
     _make_change: (id) =>
-#        console.log "#{@name}: _make_change(#{id})"
+#        @s._log "#{@name}: _make_change(#{id})"
         s_data = @data.store[id]
 
         change =
@@ -569,27 +571,27 @@ class bucket
 
         if c_object is null and s_data['version']?
             change['o'] = '-'
-            console.log "#{@name}: deletion requested for #{id}"
+            @s._log "#{@name}: deletion requested for #{id}"
         else if c_object? and s_data['object']?
             change['o'] = 'M'
             if 'sendfull' of s_data
                 change['d'] = @jd.deepCopy c_object
                 delete s_data['sendfull']
             else
-                console.log "#{@name}: object_diff ghost: #{JSON.stringify(s_data['object'])} client: #{JSON.stringify(c_object)} schema: #{JSON.stringify(@schema)}"
+                @s._log "#{@name}: object_diff ghost: #{JSON.stringify(s_data['object'])} client: #{JSON.stringify(c_object)} schema: #{JSON.stringify(@schema)}"
                 change['v'] = @jd.object_diff s_data['object'], c_object, @schema
                 if @jd.entries(change['v']) is 0
                     change = null
         else
             change = null
-#        console.log "_make_change(#{id}) returning: #{JSON.stringify(change)}"
+#        @s._log "_make_change(#{id}) returning: #{JSON.stringify(change)}"
         return change
 
     _queue_change: (change) =>
         if not change?
             return
 
-        console.log "_queue_change(#{change['id']}:#{change['ccid']}): sending"
+        @s._log "_queue_change(#{change['id']}:#{change['ccid']}): sending"
         @data.send_queue.push change
         @send("c:#{JSON.stringify(change)}")
         @_check_pending()
@@ -601,14 +603,14 @@ class bucket
 
     _send_changes: =>
         if @data.send_queue.length is 0
-            console.log "#{@name}: send_queue empty, done"
+            @s._log "#{@name}: send_queue empty, done"
             @data.send_queue_timer = null
             return
         if not @s.connected
-            console.log "#{@name}: _send_changes: not connected"
+            @s._log "#{@name}: _send_changes: not connected"
         else
             for change in @data.send_queue
-                console.log "#{@name}: sending change: #{JSON.stringify(change)}"
+                @s._log "#{@name}: sending change: #{JSON.stringify(change)}"
                 @send("c:#{JSON.stringify(change)}")
 
         @_send_backoff = @_send_backoff * 2
@@ -618,7 +620,7 @@ class bucket
         @data.send_queue_timer = setTimeout @_send_changes, @_send_backoff
 
     retrieve_changes: =>
-        console.log "#{@name}: requesting changes since cv:#{@data.last_cv}"
+        @s._log "#{@name}: requesting changes since cv:#{@data.last_cv}"
         @send("cv:#{@data.last_cv}")
 #        @sio.send("cv:#{@data.last_cv}")
         return
@@ -627,15 +629,15 @@ class bucket
         check_updates = []
         reload_needed = false
         @_send_backoff = @_backoff_min
-        console.log "#{@name}: on_changes(): response="
-        console.log response
+        @s._log "#{@name}: on_changes(): response="
+        @s._log response
         for change in response
             id = change['id']
-            console.log "#{@name}: processing id=#{id}"
+            @s._log "#{@name}: processing id=#{id}"
             pending_to_delete = []
             for pending in @data.send_queue
                 if change['clientid'] is @clientid and id is pending['id']
-#                    console.log "#{@name}: deleting change for id #{id}"
+#                    @s._log "#{@name}: deleting change for id #{id}"
                     change['local'] = true
                     pending_to_delete.push pending
                     check_updates.push id
@@ -645,27 +647,27 @@ class bucket
                 @data.send_queue = (p for p in @data.send_queue when p isnt pd)
             if pending_to_delete.length > 0
                 @_check_pending()
-#            console.log "#{@name}: send queue: #{JSON.stringify(@data.send_queue)}"
+#            @s._log "#{@name}: send queue: #{JSON.stringify(@data.send_queue)}"
 
             if 'error' of change
                 switch change['error']
                     when 412
-                        console.log "#{@name}: on_changes(): empty change, dont check"
+                        @s._log "#{@name}: on_changes(): empty change, dont check"
                         idx = check_updates.indexOf(change['id'])
                         if idx > -1
                             check_updates.splice(idx, 1)
                     when 409
-                        console.log "#{@name}: on_changes(): duplicate change, ignoring"
+                        @s._log "#{@name}: on_changes(): duplicate change, ignoring"
                     when 405
-                        console.log "#{@name}: on_changes(): bad version"
+                        @s._log "#{@name}: on_changes(): bad version"
                         if change['id'] of @data.store
                             @data.store[change['id']]['version'] = null
                         reload_needed = true
                     when 440
-                        console.log "#{@name}: on_change(): bad diff, sending full object"
+                        @s._log "#{@name}: on_change(): bad diff, sending full object"
                         @data.store[id]['sendfull'] = true
                     else
-                        console.log "#{@name}: error for last change, reloading"
+                        @s._log "#{@name}: error for last change, reloading"
                         if change['id'] of @data.store
                             @data.store[change['id']]['version'] = null
                         reload_needed = true
@@ -691,7 +693,7 @@ class bucket
                                 'change'    :   null
                                 'check'     :   null
                             s_data = @data.store[id]
-#                        console.log "#{@name}: processing modify for #{JSON.stringify(s_data)}"
+#                        @s._log "#{@name}: processing modify for #{JSON.stringify(s_data)}"
                         orig_object = @jd.deepCopy s_data['object']
                         s_data['object'] = @jd.apply_object_diff s_data['object'], change['v']
                         s_data['version'] = change['ev']
@@ -703,23 +705,23 @@ class bucket
 #                                => @_notify_client change['id'], new_object, orig_object, change['v']
                             @_notify_client change['id'], new_object, orig_object, change['v'], change['ev']
                     else if s_data? and s_data['version']? and change['ev'] <= s_data['version']
-                        console.log "#{@name}: old or duplicate change received, ignoring, change.ev=#{change['ev']}, s_data.version:#{s_data['version']}"
+                        @s._log "#{@name}: old or duplicate change received, ignoring, change.ev=#{change['ev']}, s_data.version:#{s_data['version']}"
                     else
                         if s_data?
-                            console.log "#{@name}: version mismatch couldnt apply change, change.ev:#{change['ev']}, s_data.version:#{s_data['version']}"
+                            @s._log "#{@name}: version mismatch couldnt apply change, change.ev:#{change['ev']}, s_data.version:#{s_data['version']}"
                         else
-                            console.log "#{@name}: version mismatch couldnt apply change, change.ev:#{change['ev']}, s_data null"
+                            @s._log "#{@name}: version mismatch couldnt apply change, change.ev:#{change['ev']}, s_data null"
                         if s_data?
                             @data.store[id]['version'] = null
                         reload_needed = true
                 else
-                    console.log "#{@name}: no operation found for change"
+                    @s._log "#{@name}: no operation found for change"
                 if not reload_needed
                     @data.last_cv = change['cv']
                     @_save_meta()
-                    console.log "#{@name}: checkpoint cv=#{@data.last_cv} ccid=#{@data.ccid}"
+                    @s._log "#{@name}: checkpoint cv=#{@data.last_cv} ccid=#{@data.ccid}"
         if reload_needed
-            console.log "#{@name}: reload needed, refreshing store"
+            @s._log "#{@name}: reload needed, refreshing store"
             setTimeout => @_refresh_store()
         else
             for id in check_updates
@@ -728,7 +730,7 @@ class bucket
 
     pending: =>
         x = (change['id'] for change in @data.send_queue)
-        console.log "#{@name}: pending: #{JSON.stringify(x)}"
+        @s._log "#{@name}: pending: #{JSON.stringify(x)}"
         (change['id'] for change in @data.send_queue)
 
     _check_pending: =>
@@ -746,6 +748,20 @@ class bucket
             if diff
                 @_last_pending = curr_pending
                 @cb_np curr_pending
+
+    _remote_index: =>
+        remote_index =
+            'current'   : @data.last_cv
+            'index'     : []
+            'pending'   : []
+        for own key, entry of @data.store
+            item =
+                'id'    : key
+                'v'     : entry['version']
+            remote_index['index'].push(item)
+        for change in @data.send_queue
+            remote_index['pending'].push( @jd.deepCopy(change) )
+        @send "index:#{JSON.stringify(remote_index)}"
 
 
 class simperium
@@ -769,6 +785,7 @@ class simperium
         @dmp = jsondiff.dmp
         @auth_token = null
         @options = @options || {}
+        @logging = 0
 
         @options['app_id'] = @app_id
         @sock_opts = { 'debug' : false }
@@ -805,6 +822,12 @@ class simperium
         @_sock_backoff = 3000
         @_sock_hb = 1
         @_sock_connect()
+
+    _log: (log) =>
+        if @connected
+            if @logging > 0
+                @sock.send("log:#{JSON.stringify({'log':log})}")
+        console.log(log)
 
     bucket: (name, b_opts) =>
         name = @lowerstrip(name)
@@ -887,6 +910,11 @@ class simperium
         chan = null
         if sep is 1 and data.charAt(0) is 'h'
             @_sock_hb = data.substr(2)
+            return
+        else if data.substr(0, sep) is "log"
+            logval = data.substr(sep+1)
+            console.log "simperium: got logging command: #{logval}"
+            @logging = parseInt(logval)
             return
         try
             chan = parseInt(data.substr(0, sep))

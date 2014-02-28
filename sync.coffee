@@ -120,7 +120,7 @@ class bucket
             return false
         if @jd.entries(data['object']) == 0
 
-            if @jd.entries(data['last']) > 0
+            if 'last' of data and @jd.entries(data['last']) > 0
                 return true
             else
                 return false
@@ -472,11 +472,10 @@ class bucket
         if s_data['check']?
             return false
 
-        if s_data['last']? and @jd.entries(s_data['last']) > 0
-            if @jd.equals s_data['object'], s_data['last']
-                s_data['last'] = null
-                @_remove_entity id
-                return false
+        if 'last' of s_data and @jd.equals s_data['object'], s_data['last']
+            delete s_data['last']
+            @_remove_entity id
+            return false
 
         change = @_make_change id
         if change?
@@ -527,7 +526,7 @@ class bucket
             =>
                 s_data['check'] = null
                 s_data['change'] = @_make_change id
-                s_data['last'] = null
+                delete s_data['last']
                 @_save_entity id
                 @_queue_change s_data['change']
                 ), @options['update_delay'])
@@ -543,7 +542,7 @@ class bucket
             'ccid'  :   @uuid()
 
         if not @initialized
-            if s_data['last']?
+            if 'last' of s_data
                 c_object = s_data['last']
             else
                 return null
@@ -553,7 +552,7 @@ class bucket
                 if @jd.typeOf(c_object) is 'array'
                     c_object = c_object[0]
             else
-                if s_data['last']?
+                if 'last' of s_data
                     c_object = s_data['last']
                 else
                     return null
@@ -680,7 +679,6 @@ class bucket
                                 'id'        :   id
                                 'object'    :   {}
                                 'version'   :   null
-                                'last'      :   null
                                 'change'    :   null
                                 'check'     :   null
                             s_data = @data.store[id]
@@ -757,7 +755,7 @@ class simperium
             return false
 
     constructor: (@app_id, @options) ->
-        @bversion = 2013070401
+        @bversion = 2014022801
         @jd = new jsondiff()
         @dmp = jsondiff.dmp
         @auth_token = null

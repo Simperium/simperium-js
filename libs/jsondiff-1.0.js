@@ -5,6 +5,14 @@
     __hasProp = {}.hasOwnProperty;
 
   jsondiff = (function() {
+    var DIFF_DELETE, DIFF_EQUAL, DIFF_INSERT;
+
+    DIFF_INSERT = 1;
+
+    DIFF_DELETE = -1;
+
+    DIFF_EQUAL = 0;
+
     function jsondiff() {
       this.patch_apply_with_offsets = __bind(this.patch_apply_with_offsets, this);
       this.transform_object_diff = __bind(this.transform_object_diff, this);
@@ -677,122 +685,81 @@
       }
     };
 
-    jsondiff.prototype.patch_apply_with_offsets = function(patches, text, offsets) {};
-
     jsondiff.prototype.patch_apply_with_offsets = function(patches, text, offsets) {
-    if (patches.length == 0) {
-      return text;
-    }
-
-    // Deep copy the patches so that no changes are made to originals.
-    patches = this.dmp.patch_deepCopy(patches);
-    var nullPadding = this.dmp.patch_addPadding(patches);
-    text = nullPadding + text + nullPadding;
-
-    this.dmp.patch_splitMax(patches);
-    // delta keeps track of the offset between the expected and actual location
-    // of the previous patch.  If there are patches expected at positions 10 and
-    // 20, but the first patch was found at 12, delta is 2 and the second patch
-    // has an effective expected position of 22.
-    var delta = 0;
-    for (var x = 0; x < patches.length; x++) {
-      var expected_loc = patches[x].start2 + delta;
-      var text1 = this.dmp.diff_text1(patches[x].diffs);
-      var start_loc;
-      var end_loc = -1;
-      if (text1.length > this.dmp.Match_MaxBits) {
-        // patch_splitMax will only provide an oversized pattern in the case of
-        // a monster delete.
-        start_loc = this.dmp.match_main(text,
-            text1.substring(0, this.dmp.Match_MaxBits), expected_loc);
-        if (start_loc != -1) {
-          end_loc = this.dmp.match_main(text,
-              text1.substring(text1.length - this.dmp.Match_MaxBits),
-              expected_loc + text1.length - this.dmp.Match_MaxBits);
-          if (end_loc == -1 || start_loc >= end_loc) {
-            // Can't find valid trailing context.  Drop this patch.
-            start_loc = -1;
-          }
-        }
-      } else {
-        start_loc = this.dmp.match_main(text, text1, expected_loc);
+      var del_end, del_start, delta, diffs, end_loc, expected_loc, i, index1, index2, mod, nullPadding, start_loc, text1, text2, x, y, _i, _j, _k, _l, _ref, _ref1, _ref2, _ref3;
+      if (patches.length === 0) {
+        return text;
       }
-      if (start_loc == -1) {
-        // No match found.  :(
-        /*
-        if (mobwrite.debug) {
-          window.console.warn('Patch failed: ' + patches[x]);
-        }
-        */
-        // Subtract the delta for this failed patch from subsequent patches.
-        delta -= patches[x].length2 - patches[x].length1;
-      } else {
-        // Found a match.  :)
-        /*
-        if (mobwrite.debug) {
-          window.console.info('Patch OK.');
-        }
-        */
-        delta = start_loc - expected_loc;
-        var text2;
-        if (end_loc == -1) {
-          text2 = text.substring(start_loc, start_loc + text1.length);
-        } else {
-          text2 = text.substring(start_loc, end_loc + this.dmp.Match_MaxBits);
-        }
-        // Run a diff to get a framework of equivalent indices.
-        var diffs = this.dmp.diff_main(text1, text2, false);
-        if (text1.length > this.dmp.Match_MaxBits &&
-            this.dmp.diff_levenshtein(diffs) / text1.length >
-            this.dmp.Patch_DeleteThreshold) {
-          // The end points match, but the content is unacceptably bad.
-          /*
-          if (mobwrite.debug) {
-            window.console.warn('Patch contents mismatch: ' + patches[x]);
-          }
-          */
-        } else {
-          var index1 = 0;
-          var index2;
-          for (var y = 0; y < patches[x].diffs.length; y++) {
-            var mod = patches[x].diffs[y];
-            if (mod[0] !== this.dmp.DIFF_EQUAL) {
-              index2 = this.dmp.diff_xIndex(diffs, index1);
+      patches = this.dmp.patch_deepCopy(patches);
+      nullPadding = this.dmp.patch_addPadding(patches);
+      text = nullPadding + text + nullPadding;
+      this.dmp.patch_splitMax(patches);
+      delta = 0;
+      for (x = _i = 0, _ref = patches.length; 0 <= _ref ? _i < _ref : _i > _ref; x = 0 <= _ref ? ++_i : --_i) {
+        expected_loc = patches[x].start2 + delta;
+        text1 = this.dmp.diff_text1(patches[x].diffs);
+        end_loc = -1;
+        if (text1.length > this.dmp.Match_MaxBits) {
+          start_loc = this.dmp.match_main(text, text1.substring(0, this.dmp.Match_MaxBits), expected_loc);
+          if (start_loc !== -1) {
+            end_loc = this.dmp.match_main(text, text1.substring(text1.length - this.dmp.Match_MaxBits), expected_loc + text1.length - this.dmp.Match_MaxBits);
+            if (end_loc === -1 || start_loc >= end_loc) {
+              start_loc = -1;
             }
-            if (mod[0] === this.dmp.DIFF_INSERT) {  // Insertion
-              text = text.substring(0, start_loc + index2) + mod[1] +
-                     text.substring(start_loc + index2);
-              for (var i = 0; i < offsets.length; i++) {
-                if (offsets[i] + nullPadding.length > start_loc + index2) {
-                  offsets[i] += mod[1].length;
-                }
+          }
+        } else {
+          start_loc = this.dmp.match_main(text, text1, expected_loc);
+        }
+        if (start_loc === -1) {
+          delta -= patches[x].length2 - patches[x].length1;
+        } else {
+          delta = start_loc - expected_loc;
+          if (end_loc === -1) {
+            text2 = text.substring(start_loc, start_loc + text1.length);
+          } else {
+            text2 = text.substring(start_loc, end_loc + this.dmp.Match_MaxBits);
+          }
+          diffs = this.dmp.diff_main(text1, text2, false);
+          if (text1.length > this.dmp.Match_MaxBits && this.dmp.diff_levenshtein(diffs) / text1.length > this.dmp.Patch_DeleteThreshold) {
+
+          } else {
+            index1 = 0;
+            for (y = _j = 0, _ref1 = patches[x].diffs.length; 0 <= _ref1 ? _j < _ref1 : _j > _ref1; y = 0 <= _ref1 ? ++_j : --_j) {
+              mod = patches[x].diffs[y];
+              if (mod[0] !== DIFF_EQUAL) {
+                index2 = this.dmp.diff_xIndex(diffs, index1);
               }
-            } else if (mod[0] === this.dmp.DIFF_DELETE) {  // Deletion
-              var del_start = start_loc + index2;
-              var del_end = start_loc + this.dmp.diff_xIndex(diffs,
-                  index1 + mod[1].length);
-              text = text.substring(0, del_start) + text.substring(del_end);
-              for (var i = 0; i < offsets.length; i++) {
-                if (offsets[i] + nullPadding.length > del_start) {
-                  if (offsets[i] + nullPadding.length < del_end) {
-                    offsets[i] = del_start - nullPadding.length;
-                  } else {
-                    offsets[i] -= del_end - del_start;
+              if (mod[0] === DIFF_INSERT) {
+                text = text.substring(0, start_loc + index2) + mod[1] + text.substring(start_loc + index2);
+                for (i = _k = 0, _ref2 = offsets.length; 0 <= _ref2 ? _k < _ref2 : _k > _ref2; i = 0 <= _ref2 ? ++_k : --_k) {
+                  if (offsets[i] + nullPadding.length > start_loc + index2) {
+                    offsets[i] += mod[1].length;
+                  }
+                }
+              } else if (mod[0] === DIFF_DELETE) {
+                del_start = start_loc + index2;
+                del_end = start_loc + this.dmp.diff_xIndex(diffs, index1 + mod[1].length);
+                text = text.substring(0, del_start) + text.substring(del_end);
+                for (i = _l = 0, _ref3 = offsets.length; 0 <= _ref3 ? _l < _ref3 : _l > _ref3; i = 0 <= _ref3 ? ++_l : --_l) {
+                  if (offsets[i] + nullPadding.length > del_start) {
+                    if (offsets[i] + nullPadding.length < del_end) {
+                      offsets[i] = del_start - nullPadding.length;
+                    } else {
+                      offsets[i] -= del_end - del_start;
+                    }
                   }
                 }
               }
-            }
-            if (mod[0] !== this.dmp.DIFF_DELETE) {
-              index1 += mod[1].length;
+              if (mod[0] !== DIFF_DELETE) {
+                index1 += mod[1].length;
+              }
             }
           }
         }
       }
-    }
-    // Strip the padding off.
-    text = text.substring(nullPadding.length, text.length - nullPadding.length);
-    return text;
-  };
+      text = text.substring(nullPadding.length, text.length - nullPadding.length);
+      return text;
+    };
 
     return jsondiff;
 

@@ -755,9 +755,9 @@ class simperium
             return false
 
     constructor: (@app_id, @options) ->
-        @bversion = 2014022801
+        @bversion = 2014030401
         @jd = new jsondiff()
-        @dmp = jsondiff.dmp
+        @dmp = @jd.dmp
         @auth_token = null
         @options = @options || {}
 

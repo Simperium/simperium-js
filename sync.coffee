@@ -498,7 +498,7 @@ class bucket
         if not id? and not object?
             return false
         if id?
-            if id.length is 0 or id.indexOf('/') isnt -1
+            if id.length is 0
                 return false
         else
             id = @uuid()

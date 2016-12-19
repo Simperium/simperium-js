@@ -810,8 +810,8 @@ class simperium
 
     start: =>
         @stopped = false
-        for own name, bucket of @buckets
-            bucket.start()
+        for own name, bucketInstance of @buckets
+            bucketInstance.start()
 
     stop: =>
         @stopped = true
@@ -822,8 +822,8 @@ class simperium
         @sock.send(data)
 
     synced: =>
-        for own name, bucket of @buckets
-            if bucket.pending().length > 0
+        for own name, bucketInstance of @buckets
+            if bucketInstance.pending().length > 0
                 return false
         return true
 
@@ -840,14 +840,14 @@ class simperium
         @_sock_backoff = 3000
         @connected = true
         @_sock_hb_timer = setTimeout @_sock_hb_check, 20000
-        for own name, bucket of @buckets
-            if bucket.started
-                bucket.start()
+        for own name, bucketInstance of @buckets
+            if bucketInstance.started
+                bucketInstance.start()
 
     _sock_closed: =>
         @connected = false
-        for own name, bucket of @buckets
-            bucket.authorized = false
+        for own name, bucketInstance of @buckets
+            bucketInstance.authorized = false
         console.log "simperium: sock js closed"
         if @_sock_backoff < 4000
             @_sock_backoff = @_sock_backoff + 1
